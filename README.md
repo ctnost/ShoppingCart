@@ -1,2 +1,2 @@
 # ShoppingCart
-E-Commerce shopping classes and tests.
+E-Commerce shopping cart classes and tests.
