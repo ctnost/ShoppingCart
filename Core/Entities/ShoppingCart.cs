@@ -105,6 +105,21 @@ namespace Core.Entities
             return couponDiscount;
         }
 
+        private Tuple<Campaign, double> getAvailableCampaign()
+        {
+            double maksCampaignDiscount = 0;
+            Campaign campaign = null;
+            foreach (var item in Campaigns)
+            {
+                double campaignDiscount = calculateCampaignDiscount(item);
+                if(maksCampaignDiscount < campaignDiscount){
+                    maksCampaignDiscount = campaignDiscount;
+                    campaign = item;
+                }
+            }
+
+            return Tuple.Create(campaign, maksCampaignDiscount);
+        }
         public double getCampaignDiscount()
         {
             double maksCampaignDiscount = 0;
@@ -150,17 +165,46 @@ namespace Core.Entities
         {
             return _deliveryCostCalculator.calculateFor(this);
         }
+        private double getAvailableCampaignDiscountByProduct(Dictionary<string, double> calculatedDiscounts, Tuple<Campaign,double> campaignWithDiscount, Product product)
+        {
+            double productDiscount = 0.0;
+            if(campaignWithDiscount.Item1 == null)
+                return productDiscount;
+            if(campaignWithDiscount.Item1.Category != product.Category)
+                return productDiscount;
+            if(calculatedDiscounts != null)
+            {
+                if(calculatedDiscounts.TryGetValue(product.Category.Title, out double discount))
+                {
+                    return discount;
+                }
+            }
 
+            var selectedShoppingCartItemsByCategory = ShoppingCartItems.Where(it => it.Key.Category == campaignWithDiscount.Item1.Category).ToDictionary(it => it.Key, it => it.Value);
+            if(selectedShoppingCartItemsByCategory.Count > 0)
+            {
+                productDiscount = campaignWithDiscount.Item2 / selectedShoppingCartItemsByCategory.Count;
+                calculatedDiscounts.Add(product.Category.Title, productDiscount);
+            }
+            return productDiscount;
+        }
         public string print()
         {
             StringBuilder stringBuilder = new StringBuilder();
+            var campaignDiscount = getAvailableCampaign();
+            double couponDiscountPerProduct = getCouponDiscount();
+            if(couponDiscountPerProduct.CompareTo(0.0) != 0)
+            {
+                couponDiscountPerProduct = getCouponDiscount() / getNumberOfProducts();
+            }
+            var calculatedDiscounts = new Dictionary<string, double>();
             var products = ShoppingCartItems.GroupBy(p => p.Key.Category.Title).ToDictionary(it => it.Key, it => it.ToList());
-            stringBuilder.AppendLine($"{"Category ",15}  {"Product ",15}  {"Quantity",15}  {"Unit Price",15}  {"Total Price",15}");
+            stringBuilder.AppendLine($"{"Category ",15}  {"Product ",15}  {"Quantity",15}  {"Unit Price",15}  {"Total Price",15} {"Total Discount For Campaign", 15} {"Total Discount For Coupon", 15}");
             foreach (var item in products)
             {
                 foreach (var p in item.Value)
                 {
-                    stringBuilder.AppendLine($"{item.Key,15} {p.Key.Title,15} {p.Value,15} {p.Key.Price,15} {p.Value * p.Key.Price,15}\t");
+                    stringBuilder.AppendLine($"{item.Key,15} {p.Key.Title,15} {p.Value,15} {p.Key.Price,15} {p.Value * p.Key.Price,15} {getAvailableCampaignDiscountByProduct(calculatedDiscounts,campaignDiscount,p.Key),15}  {couponDiscountPerProduct, 15}\t");
                 }
             }
             stringBuilder.AppendLine($"Total Amount: {getTotalAmount()}");
